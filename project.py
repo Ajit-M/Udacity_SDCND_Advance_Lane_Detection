@@ -7,75 +7,94 @@ import pickle as pk
 import glob 
 
 #%matplotlib inline
-
-path = "/media/luffy/New Volume/Programming/python-p/Udacity_SDND/Term 1/Computer_Vision/CarND-Advanced-Lane-Lines/"
-
-fname = glob.glob(path+"/camera_cal/*.jpg")
-
-fig, (ax1,ax2) = plt.subplots(nrows = 1, ncols = 2)
-
-counter = 0
-
-#Preparing the array for ObjectPoints and the corresponding pixel location (ImagePoints) array
-ObjPoints = np.zeros((9*6,3), np.float32)
-ObjPoints[:,:2] = np.mgrid[0:9,0:6].T.reshape(-1,2)
-
-#Empty array of the ImgPoints and ObjPoints
-ObjP = []
-ImgP = []
-
-# Setting the termination criteria for the cornerSubPix method
-criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-
-# Accessing all the images using glob module
-for image in fname:
-    input_image = mpimg.imread(image)
-
-    gray_image = cv.cvtColor(input_image, cv.COLOR_BGR2GRAY)
-
-    ret, corners = cv.findChessboardCorners(gray_image, (9,6), None)
-    #print(ret)
-    if(ret == True):
-        counter = counter + 1
-        ObjP.append(ObjPoints)
-        #Finding more Accurate Corner points in image
-        corners_accurate = cv.cornerSubPix(gray_image, corners, (11,11), (-1,-1), criteria)
-
-        #print(dir(corners_accurate))
-        # Appending the image points to the ImgP
-        ImgP.append(corners_accurate)
-
-        #Drawing the corners and Displaying them
-        #cv.drawChessboardCorners(input_image, (9,6), corners_accurate, ret)
-        #plt.imshow(input_image)
-        #plt.show()
-
-in_image = mpimg.imread(fname[3])
-
-# Calibrating the camera using the Image Points and Object Points
-ret, cam_mtx, dist, rvec, tvec = cv.calibrateCamera(ObjP, ImgP, in_image.shape[:-1], None, None)
-
-#print(cam_mtx)
-#print(ret)
+# Reading Camera Calibration Constants
 
 
-# Getting Refining Camera Matrix
-h,w = in_image.shape[:-1]
-newCamMtx, roi = cv.getOptimalNewCameraMatrix(cam_mtx,dist, (w,h), 1, (w,h))
+#fig,  axes = plt.subplots(nrows= 8, ncols = 2, sharex=True, sharey=True)
 
 
-# Undistroting the image
-undist = cv.undistort(in_image, cam_mtx, dist, newCamMtx)
-
-
-print(counter)
-
-#Cropping the image using ROI, got earlier cv.getOptimalNewCameraMatrix method
-x,y,w,h = roi
-undist = undist[y:y+h, x:x+w]
-ax1.imshow(in_image)
-ax2.imshow(undist)
-plt.show()
+with open('camera_calibration_constants.txt', 'rb') as fh:
+    data = pk.load(fh)
         
+ret, mtx, newCamMtx, dist, rvec, tvec = data
+
+# Creating Image Pipeline
+
+# Reading Images for the "test_images" folder
+
+def read_images(dir_name):
+    cwd = os.getcwd()
+    dir_list = os.listdir(cwd)
+
+    if dir_name in dir_list:
+        print("Folder name provided exist, Proceding to Load the images")
+    else:
+        print("Folder name provided doesn't exsist")
+
+    image_dir = cwd+"/" + dir_name
+    fname = os.listdir(image_dir)
+    for x in range(0,len(fname)):
+        fname[x] = dir_name + "/" + fname[x] 
+    return fname
+
+
+def image_pipeline(fname):
+
+    for x in range(0, len(fname)):
+
+        input_image = mpimg.imread(fname[x])
+
+        # Undistorting the image
+        input_image = cv.undistort(input_image, mtx, dist, newCamMtx)    
+        
+        image_shape = input_image.shape
+        print(image_shape)
+
+        hls_image = cv.cvtColor(input_image, cv.COLOR_RGB2HLS)
+
+        # Detecting Edges (Canny Detector)
+        edges = cv.Canny(hls_image[:,:,2], 180, 240)
+ 
+
+        # Creating the mask for selecting the Region of interest and warping it for the bird's eye view
+        mask = np.zeros_like(edges)
+
+
+        # Homography - Four point Transformation (Warping)
+        
+        left_bottom = [150, image_shape[0]]
+        left_top = [450,500]
+        right_top = [850,500]
+        right_bottom = [1200, image_shape[0]]    
+
+
+        points = np.array([[left_bottom,left_top,right_top,right_bottom]], dtype = np.int32) # The fillPoly method requires points in clockwise direction
+       
+        desiredPoints = np.array([[[0, image_shape[0]], [0,0], [image_shape[1],0 ], [image_shape[1],image_shape[0]]]], dtype= np.int32)
+
+        print(points.shape)
+        print(desiredPoints.shape)    
+    
+
+        cv.fillPoly(mask, points, (255,255,255))
+        edge_img_roi = cv.bitwise_and(edges,mask)
+        
+        # Getting Perspective Transformation Matrix
+        transformationMatrix = cv.getPerspectiveTransform(np.float32(points), np.float32(desiredPoints))
+        #print(transformationMatrix)
+        
+        transformedImage = cv.warpPerspective(edge_img_roi, transformationMatrix, (image_shape[1],image_shape[0]))
+
+
+        #axes[x+1,1].imshow(input_image)
+        #axes[x+1,2].imshow(edges)
+        plt.imshow(edge_img_roi)
+        plt.show()
+        plt.imshow(transformedImage)
+        plt.show()
+
+
+images = read_images("test_images")
+image_pipeline(images)    
 
 
