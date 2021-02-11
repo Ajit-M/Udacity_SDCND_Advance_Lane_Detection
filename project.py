@@ -7,7 +7,7 @@ import pickle as pk
 import glob 
 import sys
 
-np.set_printoptions(threshold=sys.maxsize)
+# np.set_printoptions(threshold=sys.maxsize)
 #%matplotlib inline
 # Reading Camera Calibration Constants
 
@@ -28,19 +28,6 @@ np.set_printoptions(threshold=sys.maxsize)
         13. Drawing the lane line throught that second degree polynomial
 
 """
-
-"""
-
-    1. Complete the current implementation of Udacity
-    Converting the code into functions
-        b. Multiple Plot (To be done last)
-        c. Combine the road image with the Boxes
-        
-        d. Fine tuning the filter or adding if required to completely remove the noise from the middle of the road
-        e. 
-
-"""
-
 
 #fig,  axes = plt.subplots(nrows= 8, ncols = 2, sharex=True, sharey=True)
 
@@ -100,7 +87,35 @@ def homographyTransform(edge_img_roi, image_shape, points):
     return transformedImage
 
 
-def slidingWindow(transformedImage):    
+def fitPolynomial(leftx, lefty, rightx, righty, input_image, output_image):
+    
+    # Fitting the Polynomial through the Lanes
+    
+    left_fit = np.polyfit(lefty, leftx,2) # Here the order are reverssed because we are predicting the value of x and we know y because we generated it using linspace
+    right_fit = np.polyfit(righty, rightx, 2)
+    
+    ploty = np.linspace(0, int(input_image.shape[0])-1, int(input_image.shape[0]))
+    # print(left_fit, "\n", right_fit)
+    left_fit_x = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
+    right_fit_x = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+    
+    # print(left_fit_x)
+    # print(right_fit_x)
+    
+        ## Visualization ##
+    # Colors in the left and right lane regions
+    # output_image[lefty, leftx] = [255, 0, 0]
+    # output_image[righty, rightx] = [0, 0, 255]
+
+    # Plots the left and right polynomials on the lane lines
+    plt.plot(left_fit_x, ploty, color='red')
+    plt.plot(right_fit_x, ploty, color='yellow')
+    return output_image
+
+
+
+
+def slidingWindow(input_image, transformedImage):    
 
     # Finding Histogram Peaks in the Bottom part of the images
     bottom_image = transformedImage[transformedImage.shape[0]//2:,:]
@@ -124,6 +139,7 @@ def slidingWindow(transformedImage):
 
     # Identifying the pixels that are activated (i.e. Non Zero pixels) in the window
     nonzero = transformedImage.nonzero()
+    # print(nonzero)
 
     nonzero_x = np.array(nonzero[1])
     nonzero_y = np.array(nonzero[0])
@@ -155,12 +171,10 @@ def slidingWindow(transformedImage):
         # Visualization bounding box data
         
         
-        print(transformedImage.shape)
+        # print(transformedImage.shape)
         # Drawing the rectangles of windows
         cv.rectangle(output_image,(win_left_x_high, win_high_y),(win_left_x_low, win_low_y),(0,255,0),2)
         cv.rectangle(output_image,(win_right_x_high, win_high_y),(win_right_x_low, win_low_y),(0,255,0),3)
-        
-        
         
 
         # plt.imshow(transformedImage, cmap="gray")
@@ -191,36 +205,72 @@ def slidingWindow(transformedImage):
         lefty = nonzero_y[left_lane_indices.astype(int)] 
         rightx = nonzero_x[right_lane_indices.astype(int)]
         righty = nonzero_y[right_lane_indices.astype(int)]
-
-    return leftx, lefty, rightx, righty, output_image
+        
+    if (len(leftx) != 0 and len(rightx) != 0):
+        #Fitting the Second degree Polynomial
+         output_image = fitPolynomial(leftx, lefty, rightx, righty, input_image, transformedImage)
+         left_curvature, right_curvature = lane_curvature(leftx, lefty, rightx, righty)
+    else:
+        print("Length of Left lane X values", len(leftx), "and length of Right Lane X values", len(rightx))
+        
+    return output_image, left_curvature, right_curvature
     
  
 
-def fitPolynomial(leftx, lefty, rightx, righty, input_image, output_image):
-    
-    # Fitting the Polynomial through the Lanes
-    
-    left_fit = np.polyfit(leftx, lefty,2)
-    right_fit = np.polyfit(rightx, righty, 2)
-    
-    ploty = np.linspace(0, int(input_image.shape[0])-1, int(input_image.shape[0]))
-    left_fit_x = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
-    right_fit_x = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
-    
-    # print(left_fit_x)
-    # print(right_fit_x)
-    
-        ## Visualization ##
-    # Colors in the left and right lane regions
-    output_image[lefty, leftx] = [255, 0, 0]
-    output_image[righty, rightx] = [0, 0, 255]
+def sliding_window_priori(left_fit, right_fit, input_image, transformedImage):
 
-    # Plots the left and right polynomials on the lane lines
-    plt.plot(left_fit_x, ploty, color='red')
-    plt.plot(right_fit_x, ploty, color='yellow')
-    return output_image
+    """ 
+    Input will be two arrays - left_fit and right_fit and binary image 
+    
+    """
+    
+    nonzero = transformedImage.nonzero()
+    nonzero_x = np.array(nonzero[1])
+    nonzero_y = np.array(nonzero[0])
+    margin = 100
+    left_lane_indices = ((nonzero_x > (left_fit[0]*(nonzero_y**2) + left_fit[1]*nonzero_y + left_fit[2]- margin)) & (nonzero_x < (left_fit[0]*(nonzero_y**2) + left_fit[1]*nonzero_y + left_fit[2] + margin )))
+    
+    right_lane_indices = (( nonzero_x > (right_fit[0]*nonzero_y**2 + right_fit[1]* nonzero_y + left_fit[2] - margin ))&(nonzero_x < (right_fit[0]*nonzero_y**2 + right_fit[1]* nonzero_y + left_fit[2] + margin )))
+    
+    # Getting the left and right lane pixels 
+    leftx = nonzero_x[left_lane_indices]
+    lefty = nonzero_y[left_lane_indices]
+    rightx =  nonzero_x[right_lane_indices]
+    righty =  nonzero_y[right_lane_indices]
+    
+    if (len(leftx) != 0 and len(rightx) != 0):
+        #Fitting the Second degree Polynomial
+         output_image = fitPolynomial(leftx, lefty, rightx, righty, input_image, transformedImage)
+         left_curvature, right_curvature = lane_curvature(leftx, lefty, rightx, righty)
+    else:
+        print("Length of Left lane X values", len(leftx), "and length of Right Lane X values", len(rightx))
+        
+    return output_image, left_curvature, right_curvature
 
 
+def lane_curvature(leftx, lefty, rightx, righty):
+    
+    
+    """ 
+    Consider the assumptions made in the exercise before, converting the pixel values to the real world
+
+    Assumptinos
+        1. Road spans 30m long 
+        2. Width of the road is 12  
+    
+    """
+    ym_per_pix = 30/720 # meters per pixel in y dimension
+    xm_per_pix = 3.7/700 # meters per pixel in x dimension 
+    
+    # Converting the pixel distance to the real world
+    
+    left_fit = np.polyfit(lefty*ym_per_pix, leftx*xm_per_pix,2 ) 
+    right_fit = np.polyfit(righty*ym_per_pix, rightx*xm_per_pix,2 ) 
+    
+    left_curvature = ( (1+(2*left_fit[0])**2)**(3/2) / abs(2*left_fit[0]) )
+    right_curvature = ( (1+(2*right_fit[0])**2)**(3/2) / abs(2*right_fit[0]) )
+    
+    return left_curvature, right_curvature
 
 # Creating Image Pipeline
 
@@ -266,8 +316,8 @@ def image_pipeline(fname):
             # Edge Detection
             binary_image = edgeDetector(hls_image)
             
-            # plt.imshow(binary_image, cmap="gray")
-            # plt.show()
+            plt.imshow(binary_image, cmap="gray")
+            plt.show()
             
             # Finding the Region of Interest and Masking it
             
@@ -283,10 +333,15 @@ def image_pipeline(fname):
             # Homography Transformation        
             transformedImage = homographyTransform(roiEdgeImage, image_shape, points)
             
+            # print(transformedImage)
+            plt.imshow(transformedImage)
+            plt.show()
+            
             # Implementing Sliding Window Algorithm
-            leftx, lefty, rightx, righty, out_image = slidingWindow(transformedImage)
+            out_image, left_curvature, right_curvature = slidingWindow(input_image, transformedImage)
             
-            
+            print("Left Curvature is : ", left_curvature,"\n")
+            print("Right Curvature is : ", right_curvature,"\n")
             
             plt.imshow(out_image)
             plt.show()
