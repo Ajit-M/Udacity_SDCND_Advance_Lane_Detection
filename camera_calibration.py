@@ -59,7 +59,7 @@ ret, cam_mtx, dist, rvec, tvec = cv.calibrateCamera(ObjP, ImgP, in_image.shape[:
 #print(ret)
 
 
-# Getting Refining Camera Matrix
+# Getting Refined Camera Matrix
 h,w = in_image.shape[:-1]
 newCamMtx, roi = cv.getOptimalNewCameraMatrix(cam_mtx,dist, (w,h), 1, (w,h))
 

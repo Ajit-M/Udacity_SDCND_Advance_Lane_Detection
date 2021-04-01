@@ -29,6 +29,17 @@ import sys
 
 """
 
+""" - 
+    - filters
+    - Car offset
+    - Visualization
+    - Jupyter port
+    - Video Pipeline
+
+"""
+
+
+
 #fig,  axes = plt.subplots(nrows= 8, ncols = 2, sharex=True, sharey=True)
 
 
@@ -39,7 +50,10 @@ def getCalibrationParams(fileName):
     return data
 
 
-        
+
+''' 
+    Need to use the glob module, to get the images
+'''
 
 def readImages(dir_name):
     cwd = os.getcwd()
@@ -56,15 +70,78 @@ def readImages(dir_name):
         fname[x] = dir_name + "/" + fname[x] 
     return fname
 
-
-def edgeDetector(in_img, lowerThreshold = 180, upperThreshold = 240):
+''' 
+    Combining different threshold for better detection of the lanes (Sobel - magnitude, direction and   )
+'''
+def sobel_thres(in_img, orientation='xy', lowerThreshold = 50, upperThreshold = 240):
+    
+    # Reducing the Noise by applying the Gaussian Blur
+    in_img = cv.GaussianBlur(in_img, (5,5) , 1.3)
     
     # Detecting Edges (Canny Detector)
-    edges = cv.Canny(in_img[:,:,2], lowerThreshold, upperThreshold)
+    # edges = cv.Canny(in_img[:,:,2], lowerThreshold, upperThreshold)
     
-    edges_binary = np.zeros_like(edges)
-    edges_binary[(edges >= 180)&(edges <= 255)] = 1
+    edges_binary = np.zeros_like(in_img)
+    
+    if (orientation == 'x'):
+        edgeX = cv.Sobel(in_img, cv2.CV_64F, 1, 0, ksize=3)
+        abs_edgeX = np.absolute(edgeX)
+        scaled_edgeX = (abs_edgeX/np.max(abs_edgeX))*255
+        edges_binary[(scaled_edgeX >= lowerThreshold) & (scaled_edgeX <= upperThreshold)] = 1    
+        
+    if (orientation == 'y'):
+        edgeY = cv.Sobel(in_img, cv2.CV_64F, 0, 1, ksize=3)
+        abs_edgeY = np.absolute(edgeY)
+        scaled_edgeY = (abs_edgeY/np.max(abs_edgeY))*255
+        edges_binary[(scaled_edgeY >= lowerThreshold) & (scaled_edgeY <= upperThreshold)] = 1
+    
+    if (orientation == 'xy')
+        
+        edgeX = cv.Sobel(in_img, cv2.CV_64F, 1, 0, ksize=3)
+        abs_edgeX = np.absolute(edgeX)
+        scaled_edgeX = (abs_edgeX/np.max(abs_edgeX))*255
+        
+        edgeY = cv.Sobel(in_img, cv2.CV_64F, 0, 1, ksize=3)
+        abs_edgeY = np.absolute(edgeY)
+        scaled_edgeY = (abs_edgeY/np.max(abs_edgeY))*255
+        
+        
+        edges_binary[(scaled_edgeX >= lowerThreshold) & (scaled_edgeX <= upperThreshold) & (scaled_edgeY >= lowerThreshold) & (scaled_edgeY <= upperThreshold)] = 1
+
     return edges_binary
+
+def mag_thres(in_img , lowerThreshold, upperThreshold):
+    
+    edgeX = cv.Sobel(in_img, cv2.CV_64F, 1, 0, ksize=3)
+    edgeY = cv.Sobel(in_img, cv2.CV_64F, 0, 1, ksize=3)
+    
+    grad_mag = np.sqrt((edgeX)**2 + (edgeY)**2)
+    
+    grad_mag = np.absolute(grad_mag)
+    
+    scaled_mag = (grad_mag/np.max(grad_mag))*255
+    
+    edges_binary = np.zeros_like(in_img)
+    
+    edges_binary[(scaled_mag >= lowerThreshold) & (scaled_mag <= upperThreshold)]
+        
+    return edges_binary
+
+def grad_dir(in_img, lowerThreshold, upperThreshold):
+
+    edgeX = cv.Sobel(in_img, cv2.CV_64F, 1, 0, ksize=3)
+    edgeY = cv.Sobel(in_img, cv2.CV_64F, 0, 1, ksize=3)
+    
+    abs_edgeX = np.absolute(edgeX)
+    abs_edgeY = np.absolute(edgeY)
+    
+    abs_grad = np.arctan2(abs_edgeY, abs_edgeX)
+    
+    edges_binary = np.zeros_like(in_img)
+    edges_binary[(abs_grad >= lowerThreshold) & (abs_grad <= upperThreshold)]
+    
+    return edges_binary
+
 
 
 def roi(edge_binary, points):
@@ -210,10 +287,11 @@ def slidingWindow(input_image, transformedImage):
         #Fitting the Second degree Polynomial
          output_image = fitPolynomial(leftx, lefty, rightx, righty, input_image, transformedImage)
          left_curvature, right_curvature = lane_curvature(leftx, lefty, rightx, righty)
+         offset = car_offset(transformedImage, leftx, rightx)
     else:
         print("Length of Left lane X values", len(leftx), "and length of Right Lane X values", len(rightx))
         
-    return output_image, left_curvature, right_curvature
+    return output_image, left_curvature, right_curvature, offset
     
  
 
@@ -242,10 +320,12 @@ def sliding_window_priori(left_fit, right_fit, input_image, transformedImage):
         #Fitting the Second degree Polynomial
          output_image = fitPolynomial(leftx, lefty, rightx, righty, input_image, transformedImage)
          left_curvature, right_curvature = lane_curvature(leftx, lefty, rightx, righty)
+         offset = car_offset(transformedImage, leftx, rightx)
     else:
         print("Length of Left lane X values", len(leftx), "and length of Right Lane X values", len(rightx))
         
-    return output_image, left_curvature, right_curvature
+    
+    return output_image, left_curvature, right_curvature, offset
 
 
 def lane_curvature(leftx, lefty, rightx, righty):
@@ -271,6 +351,19 @@ def lane_curvature(leftx, lefty, rightx, righty):
     right_curvature = ( (1+(2*right_fit[0])**2)**(3/2) / abs(2*right_fit[0]) )
     
     return left_curvature, right_curvature
+
+
+def car_offset(transformed_image,leftx, rightx):
+    xm_per_pix = 3.7/700 
+    mid_point = transformed_image.shape[-1]//2
+    
+    car_position = (leftx[-1] + rightx[-1])/2
+    
+    offsetx = (mid_point - car_position) * xm_per_pix
+    
+    return offsetx
+    
+    
 
 # Creating Image Pipeline
 
@@ -314,7 +407,15 @@ def image_pipeline(fname):
             plt.show()
     
             # Edge Detection
-            binary_image = edgeDetector(hls_image)
+            binary_sobel = sobel_thres(hls_image)
+            binary_mag = grad_mag(hls_image)
+            binary_gradDir = grad_dir(hls_image)
+            
+            binary_filter = np.zeros_like(rgb_image)
+            
+            binary_filter[(binary_sobel == 1) & (binary_mag == 1) & (binary_gradDir == 1)]          
+            
+            # Combining binary filter and binary image from color space 
             
             plt.imshow(binary_image, cmap="gray")
             plt.show()
@@ -338,10 +439,13 @@ def image_pipeline(fname):
             plt.show()
             
             # Implementing Sliding Window Algorithm
-            out_image, left_curvature, right_curvature = slidingWindow(input_image, transformedImage)
+            out_image, left_curvature, right_curvature, offset = slidingWindow(input_image, transformedImage)
+            
+           
             
             print("Left Curvature is : ", left_curvature,"\n")
             print("Right Curvature is : ", right_curvature,"\n")
+            print("Car Offset is : ", offset,"\n")
             
             plt.imshow(out_image)
             plt.show()
