@@ -1,3 +1,4 @@
+from matplotlib.cm import ScalarMappable
 import numpy as np 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -7,7 +8,7 @@ import pickle as pk
 import glob 
 import sys
 
-# np.set_printoptions(threshold=sys.maxsize)
+np.set_printoptions(threshold=sys.maxsize)
 #%matplotlib inline
 # Reading Camera Calibration Constants
 
@@ -29,12 +30,13 @@ import sys
 
 """
 
-""" - 
-    - filters
-    - Car offset
+""" 
+--> Work Remaining in this project
+    - Correcting the gradient thresholding functions mistake of not converting to grayscale
     - Visualization
     - Jupyter port
     - Video Pipeline
+    - README
 
 """
 
@@ -74,34 +76,37 @@ def readImages(dir_name):
     Combining different threshold for better detection of the lanes (Sobel - magnitude, direction and   )
 '''
 def sobel_thres(in_img, orientation='xy', lowerThreshold = 50, upperThreshold = 240):
+
+    gray_img = cv.cvtColor(in_img, cv.COLOR_RGB2GRAY)
+
     
     # Reducing the Noise by applying the Gaussian Blur
-    in_img = cv.GaussianBlur(in_img, (5,5) , 1.3)
+    gray_img = cv.GaussianBlur(gray_img, (5,5) , 1.3)
     
     # Detecting Edges (Canny Detector)
     # edges = cv.Canny(in_img[:,:,2], lowerThreshold, upperThreshold)
     
-    edges_binary = np.zeros_like(in_img)
+    edges_binary = np.zeros_like(gray_img)
     
     if (orientation == 'x'):
-        edgeX = cv.Sobel(in_img, cv2.CV_64F, 1, 0, ksize=3)
+        edgeX = cv.Sobel(gray_img, cv.CV_64F, 1, 0, ksize=3)
         abs_edgeX = np.absolute(edgeX)
         scaled_edgeX = (abs_edgeX/np.max(abs_edgeX))*255
         edges_binary[(scaled_edgeX >= lowerThreshold) & (scaled_edgeX <= upperThreshold)] = 1    
         
     if (orientation == 'y'):
-        edgeY = cv.Sobel(in_img, cv2.CV_64F, 0, 1, ksize=3)
+        edgeY = cv.Sobel(gray_img, cv.CV_64F, 0, 1, ksize=3)
         abs_edgeY = np.absolute(edgeY)
         scaled_edgeY = (abs_edgeY/np.max(abs_edgeY))*255
         edges_binary[(scaled_edgeY >= lowerThreshold) & (scaled_edgeY <= upperThreshold)] = 1
     
-    if (orientation == 'xy')
+    if (orientation == 'xy'):
         
-        edgeX = cv.Sobel(in_img, cv2.CV_64F, 1, 0, ksize=3)
+        edgeX = cv.Sobel(gray_img, cv.CV_64F, 1, 0, ksize=3)
         abs_edgeX = np.absolute(edgeX)
         scaled_edgeX = (abs_edgeX/np.max(abs_edgeX))*255
         
-        edgeY = cv.Sobel(in_img, cv2.CV_64F, 0, 1, ksize=3)
+        edgeY = cv.Sobel(gray_img, cv.CV_64F, 0, 1, ksize=3)
         abs_edgeY = np.absolute(edgeY)
         scaled_edgeY = (abs_edgeY/np.max(abs_edgeY))*255
         
@@ -110,35 +115,83 @@ def sobel_thres(in_img, orientation='xy', lowerThreshold = 50, upperThreshold = 
 
     return edges_binary
 
-def mag_thres(in_img , lowerThreshold, upperThreshold):
+def mag_thres(in_img , lowerThreshold = 95, upperThreshold = 255):
+
+    gray_img = cv.cvtColor(in_img, cv.COLOR_RGB2GRAY)
     
-    edgeX = cv.Sobel(in_img, cv2.CV_64F, 1, 0, ksize=3)
-    edgeY = cv.Sobel(in_img, cv2.CV_64F, 0, 1, ksize=3)
+    # Reducing the Noise by applying the Gaussian Blur
+    gray_img = cv.GaussianBlur(gray_img, (5,5) , 1.3)
+
     
-    grad_mag = np.sqrt((edgeX)**2 + (edgeY)**2)
+    edgeX = cv.Sobel(gray_img, cv.CV_64F, 1, 0, ksize=5)
+    edgeY = cv.Sobel(gray_img, cv.CV_64F, 0, 1, ksize=5)
     
+    grad_mag = np.sqrt((edgeX)**2 + (edgeY)**2)    
     grad_mag = np.absolute(grad_mag)
     
-    scaled_mag = (grad_mag/np.max(grad_mag))*255
+    scale_factor = np.max(grad_mag)/255
     
-    edges_binary = np.zeros_like(in_img)
+    # scaled_mag = np.zeros_like(gray_img)
+    scaled_mag = (grad_mag/scale_factor).astype(np.uint8)
     
-    edges_binary[(scaled_mag >= lowerThreshold) & (scaled_mag <= upperThreshold)]
-        
+    edges_binary = np.zeros_like(scaled_mag)
+
+    edges_binary[(scaled_mag >= lowerThreshold) & (scaled_mag <= upperThreshold)] = 1
+
+    # print("Magnitude Thresholding")
+    # print (type(scaled_mag))
+    # plt.imshow(edges_binary, cmap="gray")
+    # plt.show() 
+
     return edges_binary
 
-def grad_dir(in_img, lowerThreshold, upperThreshold):
+def grad_dir(in_img, lowerThreshold = 0.5, upperThreshold = np.pi/2):
 
-    edgeX = cv.Sobel(in_img, cv2.CV_64F, 1, 0, ksize=3)
-    edgeY = cv.Sobel(in_img, cv2.CV_64F, 0, 1, ksize=3)
+    gray_img = cv.cvtColor(in_img, cv.COLOR_RGB2GRAY)
+
+    # Reducing the Noise by applying the Gaussian Blur
+    gray_img = cv.GaussianBlur(gray_img, (5,5) , 1.3)
+
+    edgeX = cv.Sobel(gray_img, cv.CV_64F, 1, 0, ksize=3)
+    edgeY = cv.Sobel(gray_img, cv.CV_64F, 0, 1, ksize=3)
     
     abs_edgeX = np.absolute(edgeX)
     abs_edgeY = np.absolute(edgeY)
     
     abs_grad = np.arctan2(abs_edgeY, abs_edgeX)
     
-    edges_binary = np.zeros_like(in_img)
-    edges_binary[(abs_grad >= lowerThreshold) & (abs_grad <= upperThreshold)]
+    
+    edges_binary = np.zeros_like(abs_grad)
+    edges_binary[(abs_grad >= lowerThreshold) & (abs_grad <= upperThreshold)] = 1
+    
+    return edges_binary
+
+def color_thres(in_img, S_thresh, H_thresh):
+    
+   
+    gray_img = cv.cvtColor(in_img, cv.COLOR_RGB2GRAY)
+
+    hls_image = cv.cvtColor(in_img, cv.COLOR_RGB2HLS)
+    
+    h_space = hls_image[:,:,0]  
+    s_space = hls_image[:,:,2]
+    
+    h_binary = np.zeros_like(gray_img)
+    h_binary[(h_space >= H_thresh[0]) & (h_space <= H_thresh[1])] =1
+    
+    # print("Absoulute H Channel Threshold")
+    # plt.imshow(h_binary, cmap="gray")
+    # plt.show() 
+    
+    s_binary = np.zeros_like(gray_img)
+    s_binary[(s_space >= S_thresh[0]) & (s_space <= S_thresh[1])] = 1
+    
+    # print("Absoulute S Channel Threshold")
+    # plt.imshow(s_binary, cmap="gray")
+    # plt.show() 
+    
+    edges_binary = np.zeros_like(gray_img)
+    edges_binary[(h_binary == 1) & (s_binary == 1)] = 1
     
     return edges_binary
 
@@ -399,24 +452,45 @@ def image_pipeline(fname):
             
             # Convert the color scale to RGB
             rgb_image = cv.cvtColor(undistorted_image, cv.COLOR_BGR2RGB)
-        
-            # Convert the color scale to HLS for threshloding and Edge Detection
-            hls_image = cv.cvtColor(rgb_image, cv.COLOR_RGB2HLS)
+            
+            gray_img = cv.cvtColor(rgb_image, cv.COLOR_RGB2GRAY)
             
             plt.imshow(rgb_image)
             plt.show()
     
             # Edge Detection
-            binary_sobel = sobel_thres(hls_image)
-            binary_mag = grad_mag(hls_image)
-            binary_gradDir = grad_dir(hls_image)
+            binary_sobel = sobel_thres(rgb_image)
+            binary_mag = mag_thres(rgb_image)
+            binary_gradDir = grad_dir(rgb_image)
             
-            binary_filter = np.zeros_like(rgb_image)
+            binary_filter = np.zeros_like(gray_img)
             
-            binary_filter[(binary_sobel == 1) & (binary_mag == 1) & (binary_gradDir == 1)]          
+            binary_filter[(binary_sobel == 1) & (binary_mag == 1) & (binary_gradDir == 1)]  = 1
+            
+            # print("Plotting combined filters of gradients")
+            # plt.imshow(binary_filter, cmap="gray")
+            # plt.show()        
+            
+            # print("Plotting direction of gradient Image")
+            # plt.imshow(binary_gradDir, cmap="gray")
+            # plt.show()   
+        
+            # Color Thresholding for edge detection
+            color_binary = color_thres(rgb_image, (110,255), (15, 100))
+            
+            # print("Color binary")
+            # plt.imshow(color_binary, cmap="gray")
+            # plt.show()
+            
+            binary_image = np.zeros_like(gray_img)
+            
+            binary_image[(binary_filter == 1) | (color_binary == 1)] = 1
+            
+            
             
             # Combining binary filter and binary image from color space 
             
+            print("Final Image after combining all the filters")
             plt.imshow(binary_image, cmap="gray")
             plt.show()
             
@@ -435,7 +509,7 @@ def image_pipeline(fname):
             transformedImage = homographyTransform(roiEdgeImage, image_shape, points)
             
             # print(transformedImage)
-            plt.imshow(transformedImage)
+            plt.imshow(transformedImage, cmap="gray")
             plt.show()
             
             # Implementing Sliding Window Algorithm
@@ -447,7 +521,7 @@ def image_pipeline(fname):
             print("Right Curvature is : ", right_curvature,"\n")
             print("Car Offset is : ", offset,"\n")
             
-            plt.imshow(out_image)
+            plt.imshow(out_image, cmap="gray")
             plt.show()
 
 
