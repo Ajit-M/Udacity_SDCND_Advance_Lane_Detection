@@ -32,10 +32,10 @@ np.set_printoptions(threshold=sys.maxsize)
 
 """ 
 --> Work Remaining in this project
-    - Correcting the gradient thresholding functions mistake of not converting to grayscale
-    - Visualization
     - Jupyter port
+    - Using the Glob package to get the images from directory
     - Video Pipeline
+    
     - README
 
 """
@@ -138,11 +138,6 @@ def mag_thres(in_img , lowerThreshold = 95, upperThreshold = 255):
 
     edges_binary[(scaled_mag >= lowerThreshold) & (scaled_mag <= upperThreshold)] = 1
 
-    # print("Magnitude Thresholding")
-    # print (type(scaled_mag))
-    # plt.imshow(edges_binary, cmap="gray")
-    # plt.show() 
-
     return edges_binary
 
 def grad_dir(in_img, lowerThreshold = 0.5, upperThreshold = np.pi/2):
@@ -178,17 +173,9 @@ def color_thres(in_img, S_thresh, H_thresh):
     
     h_binary = np.zeros_like(gray_img)
     h_binary[(h_space >= H_thresh[0]) & (h_space <= H_thresh[1])] =1
-    
-    # print("Absoulute H Channel Threshold")
-    # plt.imshow(h_binary, cmap="gray")
-    # plt.show() 
-    
+
     s_binary = np.zeros_like(gray_img)
     s_binary[(s_space >= S_thresh[0]) & (s_space <= S_thresh[1])] = 1
-    
-    # print("Absoulute S Channel Threshold")
-    # plt.imshow(s_binary, cmap="gray")
-    # plt.show() 
     
     edges_binary = np.zeros_like(gray_img)
     edges_binary[(h_binary == 1) & (s_binary == 1)] = 1
@@ -203,7 +190,12 @@ def roi(edge_binary, points):
     cv.fillPoly(mask, points, (255,255,255))
     edge_img_roi = cv.bitwise_and(edge_binary,mask)
     return edge_img_roi
-    
+
+
+
+''' 
+
+'''
 def homographyTransform(edge_img_roi, image_shape, points):
     
     desiredPoints = np.array([[[0, image_shape[0]], [0,0], [image_shape[1],0 ], [image_shape[1],image_shape[0]]]], dtype= np.int32)
@@ -211,41 +203,50 @@ def homographyTransform(edge_img_roi, image_shape, points):
     
     # Getting Perspective Transformation Matrix
     transformationMatrix = cv.getPerspectiveTransform(np.float32(points), np.float32(desiredPoints))
+
+    transformedImage = cv.warpPerspective(edge_img_roi, transformationMatrix, (image_shape[1],image_shape[0]))
+    return transformedImage
+
+
+
+
+
+
+def inverseHomographyTransform(edge_img_roi, image_shape, points):
+    
+    desiredPoints = np.array([[[0, image_shape[0]], [0,0], [image_shape[1],0 ], [image_shape[1],image_shape[0]]]], dtype= np.int32)
+    
+    
+    # Getting Perspective Transformation Matrix
+    transformationMatrix = cv.getPerspectiveTransform(np.float32(desiredPoints), np.float32(points))
     #print(transformationMatrix)
     
     transformedImage = cv.warpPerspective(edge_img_roi, transformationMatrix, (image_shape[1],image_shape[0]))
     return transformedImage
 
 
-def fitPolynomial(leftx, lefty, rightx, righty, input_image, output_image):
-    
+
+
+
+
+def fitPolynomial(leftx, lefty, rightx, righty, input_image):
+        
     # Fitting the Polynomial through the Lanes
     
-    left_fit = np.polyfit(lefty, leftx,2) # Here the order are reverssed because we are predicting the value of x and we know y because we generated it using linspace
+    left_fit = np.polyfit(lefty, leftx,2) # Here the order are reversed because we are predicting the value of x and we know y because we generated it using linspace
     right_fit = np.polyfit(righty, rightx, 2)
     
     ploty = np.linspace(0, int(input_image.shape[0])-1, int(input_image.shape[0]))
     # print(left_fit, "\n", right_fit)
     left_fit_x = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
     right_fit_x = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
-    
-    # print(left_fit_x)
-    # print(right_fit_x)
-    
-        ## Visualization ##
-    # Colors in the left and right lane regions
-    # output_image[lefty, leftx] = [255, 0, 0]
-    # output_image[righty, rightx] = [0, 0, 255]
 
-    # Plots the left and right polynomials on the lane lines
-    plt.plot(left_fit_x, ploty, color='red')
-    plt.plot(right_fit_x, ploty, color='yellow')
-    return output_image
+    return left_fit_x, right_fit_x
 
 
 
 
-def slidingWindow(input_image, transformedImage):    
+def slidingWindow(input_image, transformedImage, points):    
 
     # Finding Histogram Peaks in the Bottom part of the images
     bottom_image = transformedImage[transformedImage.shape[0]//2:,:]
@@ -295,29 +296,15 @@ def slidingWindow(input_image, transformedImage):
         win_right_x_low = rightx_current - margin
         win_right_x_high = rightx_current + margin
 
-        # plt.imshow(transformedImage)
-        # plt.show()
-
-        # Visualization bounding box data
-        
-        
-        # print(transformedImage.shape)
         # Drawing the rectangles of windows
         cv.rectangle(output_image,(win_left_x_high, win_high_y),(win_left_x_low, win_low_y),(0,255,0),2)
         cv.rectangle(output_image,(win_right_x_high, win_high_y),(win_right_x_low, win_low_y),(0,255,0),3)
-        
-
-        # plt.imshow(transformedImage, cmap="gray")
-        # plt.show()
 
 
         # Identifying the pixels that are useful
         good_left_indices = ((nonzero_y >= win_low_y) & (nonzero_y < win_high_y) & ( nonzero_x >= win_left_x_low) & (nonzero_x < win_left_x_high)).nonzero()[0]
 
         good_right_indices = ((nonzero_y >= win_low_y) & (nonzero_y < win_high_y) & ( nonzero_x >= win_right_x_low) & (nonzero_x < win_right_x_high)).nonzero()[0]
-
-        # print(good_left_indices)
-        # print(good_right_indices)
 
         # Recentering the window based upon the minimum number of pixels found
         if len(good_left_indices) > minpix:
@@ -338,9 +325,10 @@ def slidingWindow(input_image, transformedImage):
         
     if (len(leftx) != 0 and len(rightx) != 0):
         #Fitting the Second degree Polynomial
-         output_image = fitPolynomial(leftx, lefty, rightx, righty, input_image, transformedImage)
+         left_fit_x, right_fit_x = fitPolynomial(leftx, lefty, rightx, righty, input_image)
          left_curvature, right_curvature = lane_curvature(leftx, lefty, rightx, righty)
          offset = car_offset(transformedImage, leftx, rightx)
+         output_image = visualization(input_image, left_fit_x, right_fit_x, points, left_curvature, right_curvature, offset)
     else:
         print("Length of Left lane X values", len(leftx), "and length of Right Lane X values", len(rightx))
         
@@ -348,7 +336,7 @@ def slidingWindow(input_image, transformedImage):
     
  
 
-def sliding_window_priori(left_fit, right_fit, input_image, transformedImage):
+def sliding_window_priori(left_fit, right_fit, input_image, transformedImage, points):
 
     """ 
     Input will be two arrays - left_fit and right_fit and binary image 
@@ -371,9 +359,10 @@ def sliding_window_priori(left_fit, right_fit, input_image, transformedImage):
     
     if (len(leftx) != 0 and len(rightx) != 0):
         #Fitting the Second degree Polynomial
-         output_image = fitPolynomial(leftx, lefty, rightx, righty, input_image, transformedImage)
+         left_fit_x, right_fit_x = fitPolynomial(leftx, lefty, rightx, righty, input_image, transformedImage, points)
          left_curvature, right_curvature = lane_curvature(leftx, lefty, rightx, righty)
          offset = car_offset(transformedImage, leftx, rightx)
+         output_image = visualization(input_image, left_fit_x, right_fit_x, points, left_curvature, right_curvature, offset)
     else:
         print("Length of Left lane X values", len(leftx), "and length of Right Lane X values", len(rightx))
         
@@ -407,6 +396,7 @@ def lane_curvature(leftx, lefty, rightx, righty):
 
 
 def car_offset(transformed_image,leftx, rightx):
+    
     xm_per_pix = 3.7/700 
     mid_point = transformed_image.shape[-1]//2
     
@@ -418,10 +408,7 @@ def car_offset(transformed_image,leftx, rightx):
     
     
 
-# Creating Image Pipeline
-
-# Reading Images for the "test_images" folder
-
+# Image Pipeline
 
 def undistrot(input_image, data):
     
@@ -429,6 +416,56 @@ def undistrot(input_image, data):
     # Undistorting the image
     input_image = cv.undistort(input_image, mtx, dist, newCamMtx)  
     return input_image
+
+
+''' 
+    This function is just for the displaying the results.
+
+'''
+def visualization(input_image, left_fit_x, right_fit_x, points, left_curvature, right_curvature, offset):
+
+    input_image_shape = input_image.shape
+
+    zeros_mask = np.zeros_like(input_image)
+
+    ploty = np.linspace(0, int(input_image.shape[0])-1, int(input_image.shape[0]))
+
+    # Drawing the lines on to the image
+    drawPoints_left = (np.asarray([left_fit_x, ploty]).T) 
+    drawPoints_right = (np.asarray([right_fit_x, ploty]).T)
+
+
+    # Recasting the points for a suitbale shape
+    pts = np.hstack((drawPoints_left, drawPoints_right)) # How does the hstack works but not the vstack method? Am I missing something?
+
+    pts = pts.reshape(-1,2)
+    
+    # Drawing the Lane lines, area between the lane lines
+    cv.fillPoly(zeros_mask, np.int_([pts]), (0,255,0))  
+    cv.polylines(zeros_mask, np.int32([drawPoints_left]), False, (0,0,255), thickness=25 )
+    cv.polylines(zeros_mask, np.int32([drawPoints_right]), False, (255,0,0), thickness=25 )
+
+    # Computing the inverse Homography 
+    zeros_mask = inverseHomographyTransform(zeros_mask, input_image_shape, points)
+
+    # output_image = input_image + zeros_mask  
+    output_image = cv.addWeighted(input_image, 1, zeros_mask, 0.7, 0.0)
+
+    # Adding the text information to the frame 
+    cv.putText(output_image, "The Left Lane Curvature is : " + str(left_curvature) + " m", (100,100), cv.FONT_HERSHEY_SIMPLEX, 1.25, (255,255,255), 5)
+        
+    cv.putText(output_image, "The Right Lane Curvature is : " + str(right_curvature) + " m", (100,160), cv.FONT_HERSHEY_SIMPLEX, 1.25, (255,255,255), 5)
+
+    cv.putText(output_image, "The Car Offset is : " + str(offset) + " m", (100,220), cv.FONT_HERSHEY_SIMPLEX, 1.25, (255,255,255), 5)
+
+
+
+
+    plt.imshow(output_image)
+    plt.show()
+    
+    return output_image
+    
 
 
 def image_pipeline(fname):
@@ -466,14 +503,6 @@ def image_pipeline(fname):
             binary_filter = np.zeros_like(gray_img)
             
             binary_filter[(binary_sobel == 1) & (binary_mag == 1) & (binary_gradDir == 1)]  = 1
-            
-            # print("Plotting combined filters of gradients")
-            # plt.imshow(binary_filter, cmap="gray")
-            # plt.show()        
-            
-            # print("Plotting direction of gradient Image")
-            # plt.imshow(binary_gradDir, cmap="gray")
-            # plt.show()   
         
             # Color Thresholding for edge detection
             color_binary = color_thres(rgb_image, (110,255), (15, 100))
@@ -508,14 +537,12 @@ def image_pipeline(fname):
             # Homography Transformation        
             transformedImage = homographyTransform(roiEdgeImage, image_shape, points)
             
-            # print(transformedImage)
-            plt.imshow(transformedImage, cmap="gray")
-            plt.show()
-            
             # Implementing Sliding Window Algorithm
-            out_image, left_curvature, right_curvature, offset = slidingWindow(input_image, transformedImage)
+            out_image, left_curvature, right_curvature, offset = slidingWindow(input_image, transformedImage, points)
             
-           
+            print("Sliding Window output_image")
+            plt.imshow(out_image)
+            plt.show()
             
             print("Left Curvature is : ", left_curvature,"\n")
             print("Right Curvature is : ", right_curvature,"\n")
@@ -523,6 +550,16 @@ def image_pipeline(fname):
             
             plt.imshow(out_image, cmap="gray")
             plt.show()
+
+
+''' 
+    1. Adding the flag to use prior information 
+
+'''
+
+def video_pipeline():
+    
+    return True
 
 
 images = readImages("test_images")
