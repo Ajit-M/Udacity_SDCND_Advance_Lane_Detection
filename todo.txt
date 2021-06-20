@@ -1,0 +1,12 @@
+1. Use RGB, HSV, HSL, and LAB color models
+    a. Important Channels
+
+        ii.  HSL -> Yellow (Saturation)
+        iii. HSV -> Yellow (Saturation and Value)
+        iv.  LAB -> Yellow (Ligthness and B channel) and white (Lightness) 
+    b. finally combining all of them with the thresholding one to the best results
+2. Understand differences between the color models and the color space
+3. Sobel thresholding vs the canny edge detection model and which can can be used for the better result
+4. Finalizing the code and clearing out the junk
+5. Documenting the code and pushing the changes to the git
+

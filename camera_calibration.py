@@ -8,9 +8,8 @@ import glob
 
 #%matplotlib inline
 
-path = "/media/luffy/New Volume/Programming/python-p/Udacity_SDND/Term 1/Computer_Vision/CarND-Advanced-Lane-Lines/"
 
-fname = glob.glob(path+"/camera_cal/*.jpg")
+fname = glob.glob("./camera_cal/*.jpg")
 
 fig, (ax1,ax2) = plt.subplots(nrows = 1, ncols = 2)
 
